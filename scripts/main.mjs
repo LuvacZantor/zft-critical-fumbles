@@ -11,7 +11,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.1.22";
+const VERSION = "1.1.29";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -22,7 +22,37 @@ const CRITICAL_PLAYLIST_ID = "ZFTCritSounds001";
 const FUMBLE_PLAYLIST_ID = "ZFTFumbleSounds1";
 const CRITICAL_PLAYLIST_NAME = "ZFT Critical Sounds";
 const FUMBLE_PLAYLIST_NAME = "ZFT Fumble Sounds";
-const RECENT_WINDOW_MS = 2500;
+const CRITICAL_DEFAULT_SOUNDS = Object.freeze(
+  Array.from({ length: 10 }, (_, index) => Object.freeze({
+    name: `Critical ${index + 1}`,
+    path: `modules/${MODULE_ID}/sounds/Critical${index + 1}.ogg`,
+    volume: 1,
+    repeat: false,
+    flags: {
+      [MODULE_ID]: {
+        managed: true,
+        role: "critical",
+        seedKey: `critical-${index + 1}`
+      }
+    }
+  }))
+);
+const FUMBLE_DEFAULT_SOUNDS = Object.freeze(
+  Array.from({ length: 10 }, (_, index) => Object.freeze({
+    name: `Fumble ${index + 1}`,
+    path: `modules/${MODULE_ID}/sounds/Fumble${index + 1}.ogg`,
+    volume: 1,
+    repeat: false,
+    flags: {
+      [MODULE_ID]: {
+        managed: true,
+        role: "fumble",
+        seedKey: `fumble-${index + 1}`
+      }
+    }
+  }))
+);
+const RECENT_STRUCTURED_WINDOW_MS = 5000;
 
 const FUMBLE_SETTINGS = Object.freeze({
   attack: { key: "fumbleAttack", label: "Fumble on Attack Rolls", default: true },
@@ -37,7 +67,7 @@ const FUMBLE_SETTINGS = Object.freeze({
 });
 
 const processedRolls = new WeakSet();
-const recentFingerprints = new Map();
+const recentStructuredRolls = [];
 
 console.log(`[ZFT] 🛠️ v${VERSION} | Critical Fumbles module script loaded`);
 registerPlayerStatsHooks({ version: VERSION });
@@ -109,6 +139,11 @@ async function onStructuredRoll(hookName, rollType, args) {
     }
 
     for (const roll of context.rolls) {
+      // D&D5e death saves first pass through dnd5e.rollSavingThrow before
+      // firing dnd5e.rollDeathSave. Ignore only that intermediate save hook
+      // so ZFT records one death-save fumble and uses the Death Save table.
+      if (rollType === "save" && isDeathSaveRoll(roll, args)) continue;
+
       await processRoll({
         roll,
         rollType,
@@ -138,6 +173,11 @@ async function onCreateChatMessage(message) {
     // ZFT cards or broadcast the same sound more than once.
     const authorId = message?.author?.id ?? message?.user?.id ?? message?.user;
     if (authorId && authorId !== game.user?.id) return;
+
+    // D&D5e death saves create a normal roll ChatMessage before firing the
+    // dedicated dnd5e.rollDeathSave hook. Do not let the generic fallback
+    // process that same roll first; the structured death-save hook owns it.
+    if (message?.flags?.dnd5e?.roll?.type === "death") return;
 
     const rolls = getMessageRolls(message);
     if (!rolls.length) return;
@@ -220,9 +260,12 @@ async function processRoll({ roll, rollType, source, actor, item, activity, spea
   const detection = resolved.detection;
   const natural = detection.natural;
   const policy = evaluateRollPolicy(detection, rollType);
-  const fingerprint = createRollFingerprint(roll, natural, actor, speaker);
 
-  if (isRecentDuplicate(fingerprint, rollType)) {
+  const structuredDuplicate = rollType === "generic"
+    ? consumeRecentStructuredRoll({ roll, natural, actor, speaker })
+    : null;
+
+  if (structuredDuplicate) {
     processedRolls.add(roll);
 
     debugRoll({
@@ -237,13 +280,16 @@ async function processRoll({ roll, rollType, source, actor, item, activity, spea
       detectedOutcome: detection.outcome,
       outcome: policy.outcome,
       status: "DUPLICATE",
-      reason: "Generic chat fallback duplicated a structured D&D5e roll"
+      reason: `Generic chat fallback matched recent ${formatRollType(structuredDuplicate.rollType)} D&D5e roll`
     });
     return;
   }
 
   processedRolls.add(roll);
-  rememberFingerprint(fingerprint, rollType);
+
+  if (rollType !== "generic") {
+    rememberStructuredRoll({ roll, natural, actor, speaker, rollType });
+  }
 
   const status = policy.status;
   const reason = policy.reason;
@@ -674,8 +720,8 @@ async function ensureBundledSoundPlaylists() {
     return;
   }
 
-  // The bundled Playlist documents only need to be seeded once. Use a single
-  // active GM to avoid duplicate creation when several clients join together.
+  // Use a single active GM for module-owned compendium maintenance so several
+  // connected clients cannot seed the same Playlist or PlaylistSound twice.
   if (!isPrimaryActiveGM()) return;
 
   try {
@@ -687,18 +733,21 @@ async function ensureBundledSoundPlaylists() {
         id: CRITICAL_PLAYLIST_ID,
         name: CRITICAL_PLAYLIST_NAME,
         role: "critical",
-        description: "Sound pool used by ZFT Critical Fumbles for qualified critical hits. Add one-shot audio tracks to this Playlist."
+        description: "Sound pool used by ZFT Critical Fumbles for qualified critical hits. Module-provided tracks are stored in modules/zft-critical-fumbles/sounds/.",
+        sounds: CRITICAL_DEFAULT_SOUNDS
       },
       {
         id: FUMBLE_PLAYLIST_ID,
         name: FUMBLE_PLAYLIST_NAME,
         role: "fumble",
-        description: "Sound pool used by ZFT Critical Fumbles for qualified fumbles. Add one-shot audio tracks to this Playlist."
+        description: "Sound pool used by ZFT Critical Fumbles for qualified fumbles. Module-provided tracks are stored in modules/zft-critical-fumbles/sounds/.",
+        sounds: FUMBLE_DEFAULT_SOUNDS
       }
     ];
 
     const missing = [];
     const migrations = [];
+    const soundAdditions = [];
 
     for (const definition of playlistDefinitions) {
       if (!pack.index.has(definition.id)) {
@@ -714,10 +763,15 @@ async function ensureBundledSoundPlaylists() {
       // leave future user changes alone.
       const modeInitialized = playlist.getFlag?.(MODULE_ID, "modeInitialized") === true;
       if (!modeInitialized) migrations.push(playlist);
+
+      const missingSounds = findMissingBundledSounds(playlist, definition.sounds);
+      if (missingSounds.length) {
+        soundAdditions.push({ playlist, sounds: missingSounds });
+      }
     }
 
-    if (!missing.length && !migrations.length) {
-      console.log(`[ZFT] 🔊 v${VERSION} | Bundled sound Playlists ready | Mode: Shuffle`);
+    if (!missing.length && !migrations.length && !soundAdditions.length) {
+      console.log(`[ZFT] 🔊 v${VERSION} | Bundled sound Playlists ready | Mode: Shuffle | Critical tracks: ${CRITICAL_DEFAULT_SOUNDS.length} | Fumble tracks: ${FUMBLE_DEFAULT_SOUNDS.length}`);
       return;
     }
 
@@ -744,6 +798,14 @@ async function ensureBundledSoundPlaylists() {
           [`flags.${MODULE_ID}.modeInitialized`]: true
         });
       }
+
+      for (const { playlist, sounds } of soundAdditions) {
+        if (!playlist.createEmbeddedDocuments) {
+          throw new Error(`Playlist ${playlist.name} cannot create embedded PlaylistSound documents`);
+        }
+
+        await playlist.createEmbeddedDocuments("PlaylistSound", sounds);
+      }
     } finally {
       if (wasLocked) await pack.configure({ locked: true });
     }
@@ -761,18 +823,26 @@ async function ensureBundledSoundPlaylists() {
         `[ZFT] ✅ v${VERSION} | Existing bundled sound Playlists migrated to Shuffle mode | ${migrations.map(entry => entry.name).join(", ")}`
       );
     }
+
+    if (soundAdditions.length) {
+      for (const { playlist, sounds } of soundAdditions) {
+        console.log(
+          `[ZFT] ✅ v${VERSION} | Bundled sound tracks added | ${playlist.name} | ${sounds.length} track${sounds.length === 1 ? "" : "s"}`
+        );
+      }
+    }
   } catch (error) {
     console.error(`[ZFT] ❌ v${VERSION} | Failed to initialize bundled sound Playlists`, error);
   }
 }
 
-function createBundledPlaylistSource({ id, name, role, description }) {
+function createBundledPlaylistSource({ id, name, role, description, sounds = [] }) {
   return {
     _id: id,
     name,
     description,
     mode: getShufflePlaylistMode(),
-    sounds: [],
+    sounds: sounds.map(sound => foundry.utils.deepClone(sound)),
     flags: {
       [MODULE_ID]: {
         role,
@@ -781,6 +851,27 @@ function createBundledPlaylistSource({ id, name, role, description }) {
       }
     }
   };
+}
+
+function findMissingBundledSounds(playlist, desiredSounds = []) {
+  if (!desiredSounds.length) return [];
+
+  const existingPaths = new Set(
+    Array.from(playlist?.sounds ?? [])
+      .map(sound => normalizeSoundPath(sound?.path))
+      .filter(Boolean)
+  );
+
+  return desiredSounds
+    .filter(sound => !existingPaths.has(normalizeSoundPath(sound.path)))
+    .map(sound => foundry.utils.deepClone(sound));
+}
+
+function normalizeSoundPath(path) {
+  return String(path ?? "")
+    .trim()
+    .replaceAll("\\", "/")
+    .toLocaleLowerCase();
 }
 
 function getShufflePlaylistMode() {
@@ -856,9 +947,20 @@ function normalizeStructuredHookArgs(args) {
 
   const subject = args.find(arg => arg?.subject)?.subject ?? null;
   const directItem = args.find(arg => isItemLike(arg)) ?? null;
+  const directActor = args.find(arg => isActorLike(arg)) ?? null;
+
   const activity = subject?.item || subject?.actor ? subject : null;
-  const item = activity?.item ?? (isItemLike(activity?.parent) ? activity.parent : null) ?? directItem;
-  const actor = activity?.actor ?? item?.actor ?? (isActorLike(item?.parent) ? item.parent : null) ?? null;
+  const item = activity?.item
+    ?? (isItemLike(activity?.parent) ? activity.parent : null)
+    ?? directItem;
+
+  const actor = isActorLike(subject)
+    ? subject
+    : activity?.actor
+      ?? item?.actor
+      ?? (isActorLike(item?.parent) ? item.parent : null)
+      ?? directActor
+      ?? null;
 
   return {
     rolls: [...new Set(rolls)],
@@ -920,37 +1022,115 @@ function isActorLike(value) {
   return Boolean(value && typeof value === "object" && value.documentName === "Actor");
 }
 
-function createRollFingerprint(roll, natural, actor, speaker) {
-  const formula = String(roll.formula ?? "");
-  const total = String(roll.total ?? "");
-  const actorId = actor?.id ?? speaker?.actor ?? "";
-  return `${actorId}|${formula}|${total}|${String(natural ?? "")}`;
+function isDeathSaveRoll(roll, args = []) {
+  const hookNames = Array.isArray(roll?.options?.hookNames)
+    ? roll.options.hookNames
+    : [];
+
+  if (roll?.options?.saveType === "death" || hookNames.includes("deathSave")) {
+    return true;
+  }
+
+  // D&D5e 5.2.5 calls rollSavingThrow from rollDeathSave without an ability.
+  // Normal saving throws provide an ability identifier.
+  const hookData = args.find(arg =>
+    arg
+    && typeof arg === "object"
+    && !Array.isArray(arg)
+    && arg.subject
+  );
+
+  return hookData?.ability == null;
 }
 
-function isRecentDuplicate(fingerprint, rollType) {
-  pruneRecentFingerprints();
+function rememberStructuredRoll({ roll, natural, actor, speaker, rollType }) {
+  pruneRecentStructuredRolls();
 
-  const previous = recentFingerprints.get(fingerprint);
-  if (!previous) return false;
-
-  // Preserve the structured D&D5e event and suppress a generic ChatMessage
-  // fallback for the same roll. Two separate structured events are not
-  // automatically treated as duplicates.
-  return previous.rollType !== "generic" && rollType === "generic";
-}
-
-function rememberFingerprint(fingerprint, rollType) {
-  recentFingerprints.set(fingerprint, {
+  recentStructuredRolls.push({
     timestamp: Date.now(),
+    natural: Number(natural),
+    total: normalizeRollTotal(roll?.total),
+    actorKeys: getRollActorKeys(actor, speaker),
+    actorName: getRollActorName(actor, speaker),
+    formula: String(roll?.formula ?? ""),
     rollType
   });
 }
 
-function pruneRecentFingerprints() {
-  const cutoff = Date.now() - RECENT_WINDOW_MS;
+function consumeRecentStructuredRoll({ roll, natural, actor, speaker }) {
+  pruneRecentStructuredRolls();
 
-  for (const [fingerprint, data] of recentFingerprints) {
-    if (data.timestamp < cutoff) recentFingerprints.delete(fingerprint);
+  const candidate = {
+    natural: Number(natural),
+    total: normalizeRollTotal(roll?.total),
+    actorKeys: getRollActorKeys(actor, speaker),
+    actorName: getRollActorName(actor, speaker),
+    formula: String(roll?.formula ?? "")
+  };
+
+  const matchIndex = recentStructuredRolls.findIndex(previous => {
+    if (previous.natural !== candidate.natural) return false;
+    if (previous.total !== candidate.total) return false;
+
+    const sharedActorKey = previous.actorKeys.some(key => candidate.actorKeys.includes(key));
+    const sharedActorName = Boolean(
+      previous.actorName
+      && candidate.actorName
+      && previous.actorName === candidate.actorName
+    );
+
+    if (sharedActorKey || sharedActorName) return true;
+
+    // Actorless structured rolls are uncommon, but keep a conservative
+    // formula fallback so they can still deduplicate without suppressing
+    // unrelated generic rolls.
+    const noActorIdentity = !previous.actorKeys.length
+      && !candidate.actorKeys.length
+      && !previous.actorName
+      && !candidate.actorName;
+
+    return noActorIdentity
+      && Boolean(previous.formula)
+      && previous.formula === candidate.formula;
+  });
+
+  if (matchIndex < 0) return null;
+
+  const [matched] = recentStructuredRolls.splice(matchIndex, 1);
+  return matched ?? null;
+}
+
+function getRollActorKeys(actor, speaker) {
+  const keys = new Set();
+
+  if (actor?.uuid) keys.add(String(actor.uuid));
+  if (actor?.id) keys.add(`actor:${actor.id}`);
+  if (actor?.token?.uuid) keys.add(String(actor.token.uuid));
+  if (actor?.token?.id) keys.add(`token:${actor.token.id}`);
+  if (speaker?.actor) keys.add(`actor:${speaker.actor}`);
+  if (speaker?.token) keys.add(`token:${speaker.token}`);
+
+  return [...keys];
+}
+
+function getRollActorName(actor, speaker) {
+  return String(actor?.name ?? speaker?.alias ?? "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function normalizeRollTotal(total) {
+  const numeric = Number(total);
+  return Number.isFinite(numeric) ? numeric : String(total ?? "");
+}
+
+function pruneRecentStructuredRolls() {
+  const cutoff = Date.now() - RECENT_STRUCTURED_WINDOW_MS;
+
+  for (let index = recentStructuredRolls.length - 1; index >= 0; index -= 1) {
+    if (recentStructuredRolls[index].timestamp < cutoff) {
+      recentStructuredRolls.splice(index, 1);
+    }
   }
 }
 

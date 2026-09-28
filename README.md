@@ -1,8 +1,8 @@
 # ZFT Critical Fumbles
 
-Version 1.1.22
+Version 1.1.29
 
-Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, and one-shot outcome sound pools.
+Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, duplicate-roll suppression, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, persistent player outcome tracking, and bundled one-shot outcome sound pools.
 
 ## Detection
 
@@ -15,6 +15,10 @@ A roll is eligible only when it resolves to exactly one active d20 result:
 - plain `2d20` or `30d20` -> ignored because multiple d20 results remain active
 
 Natural 20 qualifies as a critical only for Attack rolls when **Enable Critical Handling** is enabled. Natural 1 fumble eligibility is configurable by roll type in Module Settings.
+
+ZFT prefers structured D&D5e roll hooks when available and uses the generic `createChatMessage` path as a fallback for rolls such as `/r 1d20`. Recent structured rolls are tracked so the same roll is not processed a second time when D&D5e also creates a ChatMessage.
+
+Death saves receive additional handling because D&D5e routes them through normal saving-throw machinery before firing `dnd5e.rollDeathSave`. ZFT ignores the preliminary saving-throw interpretation and the death-save ChatMessage fallback, allowing `dnd5e.rollDeathSave` to be the single ZFT processing path. This does not change D&D5e's normal rule that a natural 1 death save counts as two failures.
 
 ## Compendium Packs
 
@@ -39,7 +43,7 @@ Stable seed flags are used instead of names, so renaming module-created document
 
 ## Critical Result Flow
 
-A qualified attack critical now uses this pipeline:
+A qualified attack critical uses this pipeline:
 
 ```text
 Natural 20 Attack
@@ -96,7 +100,7 @@ On `ready`, the primary active GM seeds fumble content for eight structured D&D5
 
 Each category uses a `1d20` RollTable with 20 standalone results linked to 20 JournalEntryPages. Existing seeded documents and page text are preserved. Missing pages/results and broken Journal-page UUID links are repaired by stable seed key.
 
-Qualified natural 1s in these eight structured categories now use the same production pipeline as criticals:
+Qualified natural 1s in these eight structured categories use the same production pipeline as criticals:
 
 ```text
 Natural 1
@@ -122,7 +126,20 @@ The module seeds two Playlist documents in the sound compendium if missing:
 - `ZFT Critical Sounds`
 - `ZFT Fumble Sounds`
 
-Both default to Shuffle mode. Add one-shot audio tracks to these Playlists. ZFT selects a random playable PlaylistSound from the appropriate pool and broadcasts it without starting/stopping the world's normal music or ambience Playlist.
+Both default to Shuffle mode.
+
+The module also ensures the bundled sound files are present in those playlists without deleting user-added tracks:
+
+- `Critical1.ogg` through `Critical10.ogg`
+- `Fumble1.ogg` through `Fumble10.ogg`
+
+Bundled files are referenced from:
+
+```text
+modules/zft-critical-fumbles/sounds/
+```
+
+For each qualified outcome, ZFT randomly selects one playable `PlaylistSound` from the appropriate pool and broadcasts it without starting or stopping the world's normal music or ambience playlists. Because each selection is independent, the same sound can occasionally be selected on consecutive rolls.
 
 Module Settings provide:
 
@@ -130,28 +147,18 @@ Module Settings provide:
 - Enable Fumble Sound
 - Critical / Fumble Sound Volume
 
-## Validation
+## Player-list Tracking
 
-After replacing the module and restarting Foundry:
+ZFT stores persistent per-user qualified critical and fumble counters and displays them on a compact second line beneath the native player name.
 
-1. Confirm the console reports `v1.1.14`.
-2. Open Compendium Packs -> ZFT Critical Fumbles.
-3. Confirm `Critical & Fumble Results` contains `ZFT Critical Results` with 20 pages.
-4. Confirm `Critical & Fumble Tables` contains `ZFT Critical Hits` with 20 results and formula `1d20`.
-5. Make a normal non-critical attack. No public result card should appear.
-6. Make or force a natural 20 Attack roll. One ZFT Critical Hit card should appear using the selected Journal page content.
-7. Enable Debug Mode and repeat. The private debug card and the normal critical result card should both appear.
-8. Delete one seeded critical Journal page, reload as GM, and confirm only that missing page is recreated and its table linkage is repaired.
-9. Force a natural 1 on an Attack, Saving Throw, Ability Check, Skill Check, Tool Check, Concentration roll, Death Save, and Initiative roll. Confirm each uses its matching ZFT fumble table, resolves one Journal page, posts one Fumble result card, and does not make a second table draw.
-10. Force a generic `/r 1d20` natural 1. Confirm it is still detected but uses the generic fallback card rather than a category-specific table.
+GM manual corrections use Shared Dice-style gestures:
 
-## Player-list tracking
+- Ctrl/Cmd + left-click adds one
+- Ctrl/Cmd + right-click removes one
 
-v1.1.15 adds persistent per-user qualified critical and fumble counters to Foundry's Players list.
+An optional client-side Action Dialogs setting opens a quantity editor instead. The display can be disabled per client from Module Settings.
 
-v1.1.20 moves those counters onto a compact second line beneath the native player name. ZFT no longer inspects, repositions around, or modifies Shared Dice UI, so third-party player-list resources retain the full horizontal resource lane. GM manual corrections mirror Shared Dice's edit gesture: Ctrl/Cmd + left-click adds one and Ctrl/Cmd + right-click removes one. An optional client-side Action Dialogs setting opens a quantity editor instead. The display can be disabled per client from Module Settings.
-
-v1.1.22 fixes player-list counter spacing by removing the nested count span and rendering each icon/value pair as one compact inline chip, preventing Foundry or third-party span/flex rules from separating the icon from its number.
+Duplicate structured/generic processing is suppressed before outcome tracking, so one qualified roll produces one ZFT counter update. Death saves are also restricted to the dedicated `dnd5e.rollDeathSave` processing path.
 
 The public API exposes:
 
@@ -159,3 +166,20 @@ The public API exposes:
 game.zftCriticalFumbles.getUserStats(userId);
 await game.zftCriticalFumbles.resetUserStats(userId);
 ```
+
+## Validation
+
+After replacing the module and restarting or refreshing Foundry:
+
+1. Confirm the console reports `v1.1.29`.
+2. Open Compendium Packs -> ZFT Critical Fumbles.
+3. Confirm `Critical & Fumble Results` contains `ZFT Critical Results` with 20 pages.
+4. Confirm `Critical & Fumble Tables` contains `ZFT Critical Hits` with 20 results and formula `1d20`.
+5. Confirm `ZFT Critical Sounds` contains the bundled `Critical 1` through `Critical 10` tracks.
+6. Confirm `ZFT Fumble Sounds` contains the bundled `Fumble 1` through `Fumble 10` tracks.
+7. Make a normal non-critical attack. No public result card or outcome sound should appear.
+8. Make or force a natural 20 Attack roll. One ZFT Critical Hit card, one player-stat increment, and one critical sound should occur.
+9. Force a natural 1 on an Attack, Saving Throw, Ability Check, Skill Check, Tool Check, Concentration roll, Death Save, and Initiative roll. Confirm each uses its matching ZFT fumble table and produces one ZFT outcome.
+10. For a natural 1 Death Save, confirm the console shows only `Type: death-save`, not additional `Type: save` or `Type: generic` ZFT processing.
+11. Force a generic `/r 1d20` natural 1. Confirm it is still detected but uses the generic fallback card rather than a category-specific table.
+12. If testing sound playback from multiple Foundry sessions on the same physical computer, remember that each connected client will play the broadcast sound.
