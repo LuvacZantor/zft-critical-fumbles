@@ -11,7 +11,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.1.23";
+const VERSION = "1.1.24";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -22,7 +22,7 @@ const CRITICAL_PLAYLIST_ID = "ZFTCritSounds001";
 const FUMBLE_PLAYLIST_ID = "ZFTFumbleSounds1";
 const CRITICAL_PLAYLIST_NAME = "ZFT Critical Sounds";
 const FUMBLE_PLAYLIST_NAME = "ZFT Fumble Sounds";
-const RECENT_WINDOW_MS = 2500;
+const RECENT_STRUCTURED_WINDOW_MS = 5000;
 
 const FUMBLE_SETTINGS = Object.freeze({
   attack: { key: "fumbleAttack", label: "Fumble on Attack Rolls", default: true },
@@ -37,7 +37,7 @@ const FUMBLE_SETTINGS = Object.freeze({
 });
 
 const processedRolls = new WeakSet();
-const recentFingerprints = new Map();
+const recentStructuredRolls = [];
 
 console.log(`[ZFT] 🛠️ v${VERSION} | Critical Fumbles module script loaded`);
 registerPlayerStatsHooks({ version: VERSION });
@@ -220,9 +220,12 @@ async function processRoll({ roll, rollType, source, actor, item, activity, spea
   const detection = resolved.detection;
   const natural = detection.natural;
   const policy = evaluateRollPolicy(detection, rollType);
-  const fingerprint = createRollFingerprint(roll, natural, actor, speaker);
 
-  if (isRecentDuplicate(fingerprint, rollType)) {
+  const structuredDuplicate = rollType === "generic"
+    ? consumeRecentStructuredRoll({ roll, natural, actor, speaker })
+    : null;
+
+  if (structuredDuplicate) {
     processedRolls.add(roll);
 
     debugRoll({
@@ -237,13 +240,16 @@ async function processRoll({ roll, rollType, source, actor, item, activity, spea
       detectedOutcome: detection.outcome,
       outcome: policy.outcome,
       status: "DUPLICATE",
-      reason: "Generic chat fallback duplicated a structured D&D5e roll"
+      reason: `Generic chat fallback matched recent ${formatRollType(structuredDuplicate.rollType)} D&D5e roll`
     });
     return;
   }
 
   processedRolls.add(roll);
-  rememberFingerprint(fingerprint, rollType);
+
+  if (rollType !== "generic") {
+    rememberStructuredRoll({ roll, natural, actor, speaker, rollType });
+  }
 
   const status = policy.status;
   const reason = policy.reason;
@@ -931,37 +937,94 @@ function isActorLike(value) {
   return Boolean(value && typeof value === "object" && value.documentName === "Actor");
 }
 
-function createRollFingerprint(roll, natural, actor, speaker) {
-  const formula = String(roll.formula ?? "");
-  const total = String(roll.total ?? "");
-  const actorId = actor?.id ?? speaker?.actor ?? "";
-  return `${actorId}|${formula}|${total}|${String(natural ?? "")}`;
-}
+function rememberStructuredRoll({ roll, natural, actor, speaker, rollType }) {
+  pruneRecentStructuredRolls();
 
-function isRecentDuplicate(fingerprint, rollType) {
-  pruneRecentFingerprints();
-
-  const previous = recentFingerprints.get(fingerprint);
-  if (!previous) return false;
-
-  // Preserve the structured D&D5e event and suppress a generic ChatMessage
-  // fallback for the same roll. Two separate structured events are not
-  // automatically treated as duplicates.
-  return previous.rollType !== "generic" && rollType === "generic";
-}
-
-function rememberFingerprint(fingerprint, rollType) {
-  recentFingerprints.set(fingerprint, {
+  recentStructuredRolls.push({
     timestamp: Date.now(),
+    natural: Number(natural),
+    total: normalizeRollTotal(roll?.total),
+    actorKeys: getRollActorKeys(actor, speaker),
+    actorName: getRollActorName(actor, speaker),
+    formula: String(roll?.formula ?? ""),
     rollType
   });
 }
 
-function pruneRecentFingerprints() {
-  const cutoff = Date.now() - RECENT_WINDOW_MS;
+function consumeRecentStructuredRoll({ roll, natural, actor, speaker }) {
+  pruneRecentStructuredRolls();
 
-  for (const [fingerprint, data] of recentFingerprints) {
-    if (data.timestamp < cutoff) recentFingerprints.delete(fingerprint);
+  const candidate = {
+    natural: Number(natural),
+    total: normalizeRollTotal(roll?.total),
+    actorKeys: getRollActorKeys(actor, speaker),
+    actorName: getRollActorName(actor, speaker),
+    formula: String(roll?.formula ?? "")
+  };
+
+  const matchIndex = recentStructuredRolls.findIndex(previous => {
+    if (previous.natural !== candidate.natural) return false;
+    if (previous.total !== candidate.total) return false;
+
+    const sharedActorKey = previous.actorKeys.some(key => candidate.actorKeys.includes(key));
+    const sharedActorName = Boolean(
+      previous.actorName
+      && candidate.actorName
+      && previous.actorName === candidate.actorName
+    );
+
+    if (sharedActorKey || sharedActorName) return true;
+
+    // Actorless structured rolls are uncommon, but keep a conservative
+    // formula fallback so they can still deduplicate without suppressing
+    // unrelated generic rolls.
+    const noActorIdentity = !previous.actorKeys.length
+      && !candidate.actorKeys.length
+      && !previous.actorName
+      && !candidate.actorName;
+
+    return noActorIdentity
+      && Boolean(previous.formula)
+      && previous.formula === candidate.formula;
+  });
+
+  if (matchIndex < 0) return null;
+
+  const [matched] = recentStructuredRolls.splice(matchIndex, 1);
+  return matched ?? null;
+}
+
+function getRollActorKeys(actor, speaker) {
+  const keys = new Set();
+
+  if (actor?.uuid) keys.add(String(actor.uuid));
+  if (actor?.id) keys.add(`actor:${actor.id}`);
+  if (actor?.token?.uuid) keys.add(String(actor.token.uuid));
+  if (actor?.token?.id) keys.add(`token:${actor.token.id}`);
+  if (speaker?.actor) keys.add(`actor:${speaker.actor}`);
+  if (speaker?.token) keys.add(`token:${speaker.token}`);
+
+  return [...keys];
+}
+
+function getRollActorName(actor, speaker) {
+  return String(actor?.name ?? speaker?.alias ?? "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function normalizeRollTotal(total) {
+  const numeric = Number(total);
+  return Number.isFinite(numeric) ? numeric : String(total ?? "");
+}
+
+function pruneRecentStructuredRolls() {
+  const cutoff = Date.now() - RECENT_STRUCTURED_WINDOW_MS;
+
+  for (let index = recentStructuredRolls.length - 1; index >= 0; index -= 1) {
+    if (recentStructuredRolls[index].timestamp < cutoff) {
+      recentStructuredRolls.splice(index, 1);
+    }
   }
 }
 
