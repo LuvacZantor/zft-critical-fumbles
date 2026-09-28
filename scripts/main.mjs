@@ -11,7 +11,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.1.22";
+const VERSION = "1.1.23";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -856,9 +856,20 @@ function normalizeStructuredHookArgs(args) {
 
   const subject = args.find(arg => arg?.subject)?.subject ?? null;
   const directItem = args.find(arg => isItemLike(arg)) ?? null;
+  const directActor = args.find(arg => isActorLike(arg)) ?? null;
+
   const activity = subject?.item || subject?.actor ? subject : null;
-  const item = activity?.item ?? (isItemLike(activity?.parent) ? activity.parent : null) ?? directItem;
-  const actor = activity?.actor ?? item?.actor ?? (isActorLike(item?.parent) ? item.parent : null) ?? null;
+  const item = activity?.item
+    ?? (isItemLike(activity?.parent) ? activity.parent : null)
+    ?? directItem;
+
+  const actor = isActorLike(subject)
+    ? subject
+    : activity?.actor
+      ?? item?.actor
+      ?? (isActorLike(item?.parent) ? item.parent : null)
+      ?? directActor
+      ?? null;
 
   return {
     rolls: [...new Set(rolls)],
