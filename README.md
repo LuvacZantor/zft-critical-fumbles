@@ -1,8 +1,8 @@
 # ZFT Critical Fumbles
 
-Version 1.1.29
+Version 1.2.0
 
-Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, duplicate-roll suppression, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, persistent player outcome tracking, and bundled one-shot outcome sound pools.
+Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, duplicate-roll suppression, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, persistent player outcome tracking, bundled one-shot outcome sound pools, and optional visual reminder Active Effects.
 
 ## Detection
 
@@ -113,6 +113,43 @@ Natural 1
 
 Generic d20 rolls are still detected and can be qualified by the existing setting, but they intentionally use the fallback detection card because a generic roll does not provide enough context to select a meaningful consequence table.
 
+## Reminder Effects
+
+Version 1.2.0 adds optional visual-only Active Effects for Journal-driven ZFT outcomes.
+
+- **Create Fumble Reminder Effects** is enabled by default.
+- **Create Critical Reminder Effects** remains disabled by default while the critical-side behavior is being validated.
+- Reminder effects contain no mechanical Active Effect changes.
+- The effect description uses the same Journal page HTML that supplies the ZFT result card.
+- The effect name includes the result name and the result's `Effect:` wording when available.
+- Effects remain in place until manually removed.
+- ZFT sets `flags.dae.showIcon = true`, matching DAE's **Always Show Effect Icon** control, so newly-created reminders display on tokens without manual effect configuration.
+- Fumble reminders are applied to the Actor that rolled the fumble.
+
+Critical reminder recipients are Journal-driven. Each seeded critical Journal page receives a `flags.zft-critical-fumbles.effectTarget` value. Valid values are:
+
+- `roller` - apply the reminder to the Actor that rolled the critical.
+- `target` - apply the reminder to the attack target captured when the critical result card was created. If multiple targets were captured, ZFT prompts for the recipient. If no target was captured, ZFT prompts from scene tokens rather than guessing.
+- `ally` - prompt for the ally who receives the reminder.
+- `none` - do not create a reminder Active Effect for that result.
+
+The Journal flag is the runtime source of truth. The bundled `critical-results.mjs` definitions only seed missing metadata. Existing valid Journal targeting metadata is preserved on later loads, and Journal result text is never replaced by this metadata migration.
+
+Current bundled critical targeting:
+
+- Target: Off Balance, Opening, Staggered, Hobbled, Driving Strike, Broken Rhythm, Shaken, Guard Open, Checked Momentum, Forced Reposition, Disrupted Defense, Pinned Down, Crushing Momentum, Perfect Opening.
+- Roller: Follow Through, Pressed Advantage, Combat Momentum, Relentless, Seized Initiative.
+- Ally: Rallying Strike.
+
+The public API adds:
+
+```js
+game.zftCriticalFumbles.getReminderEffects(actorOrId);
+await game.zftCriticalFumbles.clearReminderEffects(actorOrId);
+```
+
+If no Actor or ID is supplied, the API uses the first controlled token when possible.
+
 ## Debug Mode
 
 Enable **Debug Mode** in Module Settings to receive a private debug card for every observed candidate d20 roll and detailed console diagnostics. Debug Mode is client-scoped.
@@ -169,17 +206,23 @@ await game.zftCriticalFumbles.resetUserStats(userId);
 
 ## Validation
 
-After replacing the module and restarting or refreshing Foundry:
+After extracting this patch over the existing `Data/modules/zft-critical-fumbles` directory and restarting Foundry:
 
-1. Confirm the console reports `v1.1.29`.
-2. Open Compendium Packs -> ZFT Critical Fumbles.
-3. Confirm `Critical & Fumble Results` contains `ZFT Critical Results` with 20 pages.
-4. Confirm `Critical & Fumble Tables` contains `ZFT Critical Hits` with 20 results and formula `1d20`.
-5. Confirm `ZFT Critical Sounds` contains the bundled `Critical 1` through `Critical 10` tracks.
-6. Confirm `ZFT Fumble Sounds` contains the bundled `Fumble 1` through `Fumble 10` tracks.
-7. Make a normal non-critical attack. No public result card or outcome sound should appear.
-8. Make or force a natural 20 Attack roll. One ZFT Critical Hit card, one player-stat increment, and one critical sound should occur.
-9. Force a natural 1 on an Attack, Saving Throw, Ability Check, Skill Check, Tool Check, Concentration roll, Death Save, and Initiative roll. Confirm each uses its matching ZFT fumble table and produces one ZFT outcome.
-10. For a natural 1 Death Save, confirm the console shows only `Type: death-save`, not additional `Type: save` or `Type: generic` ZFT processing.
-11. Force a generic `/r 1d20` natural 1. Confirm it is still detected but uses the generic fallback card rather than a category-specific table.
-12. If testing sound playback from multiple Foundry sessions on the same physical computer, remember that each connected client will play the broadcast sound.
+1. Confirm the console reports ZFT v1.2.0 and `Critical recipient metadata ready` or `Seeded critical recipient metadata`.
+2. Confirm **Create Fumble Reminder Effects** is enabled.
+3. Force a structured natural 1 and confirm the rolling Actor receives one reminder Active Effect whose token icon is visible without manually changing **Always Show Effect Icon**.
+4. Confirm the reminder effect contains no mechanical Active Effect changes and remains until manually removed.
+5. Enable **Create Critical Reminder Effects**.
+6. Force a natural 20 until a `target` critical result occurs with exactly one creature targeted. Confirm the reminder appears on the target, not the roller.
+7. Force or select a `roller` critical result and confirm the reminder appears on the roller.
+8. Force `Rallying Strike` and confirm ZFT prompts for the ally recipient before creating the reminder.
+9. Test a critical with multiple targets selected and confirm ZFT prompts which target receives the reminder.
+10. Open a seeded critical Journal page and confirm its `effectTarget` flag is present. Editing the Journal text must continue to change future card/effect wording without changing targeting behavior.
+11. With an Actor token controlled, run `game.zftCriticalFumbles.getReminderEffects()` and confirm it returns only ZFT reminder effects on that Actor.
+12. Run `await game.zftCriticalFumbles.clearReminderEffects()` and confirm only ZFT reminder effects are removed from the controlled Actor.
+
+
+
+### Critical reminder polarity icons
+
+Critical Journal pages carry both `effectTarget` and `effectPolarity` metadata. Harmful critical consequences use `icons/critical-target-reminder.svg` (red target/debuff styling), while beneficial or neutral critical reminders use the standard gold `icons/critical-reminder.svg`. Existing valid Journal metadata and user-edited Journal text are preserved when missing metadata is repaired.

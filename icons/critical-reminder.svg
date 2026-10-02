@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="46" fill="#d88a00" stroke="#ffffff" stroke-width="6"/>
+  <path d="M50 8 L58 28 L79 21 L72 42 L92 50 L72 58 L79 79 L58 72 L50 92 L42 72 L21 79 L28 58 L8 50 L28 42 L21 21 L42 28 Z" fill="#ffba00"/>
+  <text x="50" y="62" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#111111">20</text>
+</svg>

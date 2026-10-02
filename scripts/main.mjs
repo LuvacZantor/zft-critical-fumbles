@@ -1,5 +1,6 @@
 import { resolveSingleActiveD20 } from "./d20-detector.mjs";
 import { ensureCriticalContent, ensureFumbleContent, rollCriticalResult, rollFumbleResult } from "./content-manager.mjs";
+import { ensureCriticalTargetMetadata } from "./critical-targeting.mjs";
 import {
   adjustUserOutcomeStats,
   getUserOutcomeStats,
@@ -11,7 +12,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.1.29";
+const VERSION = "1.2.0";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -86,6 +87,7 @@ Hooks.once("ready", async () => {
 
   await ensureBundledSoundPlaylists();
   await ensureCriticalContent({ version: VERSION });
+  await ensureCriticalTargetMetadata({ version: VERSION });
   await ensureFumbleContent({ version: VERSION });
   registerDnd5eRollHooks();
   Hooks.on("createChatMessage", onCreateChatMessage);
@@ -1211,6 +1213,7 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
   const rollName = activity?.name ?? item?.name ?? formatRollType(rollType);
   const rawJournalContent = String(page?.text?.content ?? "").trim();
   const enrichedJournalContent = await enrichJournalContent(rawJournalContent, page, actor);
+  const targetContext = captureCurrentTargetContext();
 
   const content = `
     <div class="zft-critical-fumbles-card ${cssClass} result-card">
@@ -1240,7 +1243,10 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
         tableUuid: table?.uuid ?? null,
         tableResultId: result?.id ?? null,
         tableRollTotal: tableRoll?.total ?? null,
-        journalPageUuid: page?.uuid ?? null
+        journalPageUuid: page?.uuid ?? null,
+        sourceActorUuid: actor?.uuid ?? null,
+        targetTokenUuids: targetContext.tokenUuids,
+        targetActorUuids: targetContext.actorUuids
       }
     }
   });
@@ -1252,6 +1258,22 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
     result: result?.name ?? result?.text ?? result?.id ?? null,
     journalPageUuid: page?.uuid ?? null
   });
+}
+
+function captureCurrentTargetContext() {
+  const targets = Array.from(game.user?.targets ?? []);
+  const tokenUuids = [];
+  const actorUuids = [];
+
+  for (const token of targets) {
+    const tokenUuid = token?.document?.uuid ?? token?.uuid ?? null;
+    const actorUuid = token?.actor?.uuid ?? token?.document?.actor?.uuid ?? null;
+
+    if (tokenUuid && !tokenUuids.includes(tokenUuid)) tokenUuids.push(tokenUuid);
+    if (actorUuid && !actorUuids.includes(actorUuid)) actorUuids.push(actorUuid);
+  }
+
+  return { tokenUuids, actorUuids };
 }
 
 async function enrichJournalContent(content, page, actor) {
