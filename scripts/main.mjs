@@ -1,6 +1,7 @@
 import { resolveSingleActiveD20 } from "./d20-detector.mjs";
 import { ensureCriticalContent, ensureFumbleContent, rollCriticalResult, rollFumbleResult } from "./content-manager.mjs";
 import { ensureCriticalTargetMetadata } from "./critical-targeting.mjs";
+import { initializeCriticalFumbleSidebar, registerCriticalFumbleSidebarSettings, registerCriticalFumbleSidebarTab } from "./sidebar.mjs";
 import {
   adjustUserOutcomeStats,
   getUserOutcomeStats,
@@ -12,7 +13,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -77,7 +78,11 @@ Hooks.once("init", () => {
   console.log(`[ZFT] 🚀 v${VERSION} | Critical Fumbles initializing`);
   registerSettings();
   registerPlayerStatsSetting();
+  registerCriticalFumbleSidebarSettings();
+  registerCriticalFumbleSidebarTab();
 });
+
+Hooks.once("setup", registerCriticalFumbleSidebarTab);
 
 Hooks.once("ready", async () => {
   if (game.system?.id !== "dnd5e") {
@@ -92,6 +97,7 @@ Hooks.once("ready", async () => {
   registerDnd5eRollHooks();
   Hooks.on("createChatMessage", onCreateChatMessage);
   registerPublicApi();
+  await initializeCriticalFumbleSidebar();
 
   console.log(
     `[ZFT] ✅ v${VERSION} | Critical Fumbles ready | Foundry ${game.version} | D&D5e ${game.system.version}`
@@ -1228,14 +1234,20 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
     </div>
   `;
 
+  const messageSpeaker = actor
+    ? ChatMessage.getSpeaker({ actor })
+    : (speaker ?? ChatMessage.getSpeaker());
+  const sourceTokenUuid = resolveSourceTokenUuid(actor, messageSpeaker);
+  const historyEntryId = foundry.utils.randomID();
+
   await ChatMessage.create({
-    speaker: actor
-      ? ChatMessage.getSpeaker({ actor })
-      : (speaker ?? ChatMessage.getSpeaker()),
+    speaker: messageSpeaker,
     content,
     flags: {
       [MODULE_ID]: {
         resultCard: true,
+        historyEntryId,
+        resultTitle: page?.name ?? (isCritical ? "Critical Result" : "Fumble Result"),
         natural,
         outcome,
         rollType,
@@ -1245,6 +1257,7 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
         tableRollTotal: tableRoll?.total ?? null,
         journalPageUuid: page?.uuid ?? null,
         sourceActorUuid: actor?.uuid ?? null,
+        sourceTokenUuid,
         targetTokenUuids: targetContext.tokenUuids,
         targetActorUuids: targetContext.actorUuids
       }
@@ -1258,6 +1271,16 @@ async function postOutcomeResultChatCard({ natural, outcome, rollType, actor, it
     result: result?.name ?? result?.text ?? result?.id ?? null,
     journalPageUuid: page?.uuid ?? null
   });
+}
+
+
+function resolveSourceTokenUuid(actor, speaker) {
+  const actorTokenUuid = actor?.token?.uuid ?? actor?.token?.document?.uuid ?? null;
+  if (actorTokenUuid) return actorTokenUuid;
+
+  const sceneId = speaker?.scene ?? null;
+  const tokenId = speaker?.token ?? null;
+  return sceneId && tokenId ? `Scene.${sceneId}.Token.${tokenId}` : null;
 }
 
 function captureCurrentTargetContext() {

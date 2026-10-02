@@ -1,8 +1,8 @@
 {
   "id": "zft-critical-fumbles",
   "title": "ZFT Critical Fumbles",
-  "description": "Detects and classifies single-result d20 rolls for configurable critical and fumble handling, seeds module-owned RollTable/Journal content, renders Journal-driven outcome chat cards, supports module-managed Playlist sound pools, tracks per-user critical/fumble totals, and creates optional Journal-targeted reminder Active Effects.",
-  "version": "1.2.0",
+  "description": "Detects and classifies single-result d20 rolls for configurable critical and fumble handling, seeds module-owned RollTable/Journal content, renders Journal-driven outcome chat cards, supports reminder Active Effects and sounds, tracks per-user totals, and provides a persistent GM-managed Criticals & Fumbles sidebar with collapsible history, individual/all clearing, and token pinging.",
+  "version": "1.3.0",
   "authors": [
     {
       "name": "Luvac Zantor"
@@ -26,7 +26,8 @@
     "scripts/reminder-effects.mjs"
   ],
   "styles": [
-    "styles/zft-critical-fumbles.css"
+    "styles/zft-critical-fumbles.css",
+    "styles/zft-critical-fumbles-sidebar.css"
   ],
   "packs": [
     {

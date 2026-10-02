@@ -1,6 +1,6 @@
 # ZFT Critical Fumbles
 
-Version 1.2.0
+Version 1.3.0
 
 Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, duplicate-roll suppression, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, persistent player outcome tracking, bundled one-shot outcome sound pools, and optional visual reminder Active Effects.
 
@@ -113,6 +113,21 @@ Natural 1
 
 Generic d20 rolls are still detected and can be qualified by the existing setting, but they intentionally use the fallback detection card because a generic roll does not provide enough context to select a meaningful consequence table.
 
+## Criticals & Fumbles Sidebar
+
+Version 1.3.0 adds a native Foundry sidebar tab named **Criticals & Fumbles** with its own persistent world-level history. Chat remains the normal public result output, but chat history is no longer the sidebar source of truth after an event has been recorded.
+
+- Critical and fumble entries start collapsed and are color-coded: criticals use gold accents and fumbles use red accents.
+- Expanding an entry shows a snapshot of the Journal-driven result card as it existed when the event occurred. Later Journal edits do not rewrite old sidebar history.
+- Sidebar history survives chat deletion, chat pruning, Active Effect removal, browser refreshes, and Foundry restarts.
+- On first use, v1.3.0 imports currently available ZFT result ChatMessages once so an existing combat history is not lost. Clearing the sidebar does not cause those chat messages to be imported again.
+- When ZFT can resolve the affected token on the currently viewed scene, a location button pans to and pings that token.
+- Reminder-effect routing updates the matching sidebar record with the actual target, roller, or selected ally.
+- GMs can remove individual sidebar entries or use **Clear** to clear all sidebar history. These actions do not delete chat messages or remove Active Effects.
+- When a GM manually removes a ZFT reminder Active Effect, ZFT asks whether the matching sidebar entry should also be removed. **Keep History** leaves the sidebar record intact. Bulk reminder clearing through the ZFT API suppresses these per-effect prompts.
+- Players can view, expand, and ping sidebar entries but cannot remove or clear the shared history.
+- The sidebar is implemented entirely inside `zft-critical-fumbles`; ZFT Raised Hands is not a dependency.
+
 ## Reminder Effects
 
 Version 1.2.0 adds optional visual-only Active Effects for Journal-driven ZFT outcomes.
@@ -208,7 +223,7 @@ await game.zftCriticalFumbles.resetUserStats(userId);
 
 After extracting this patch over the existing `Data/modules/zft-critical-fumbles` directory and restarting Foundry:
 
-1. Confirm the console reports ZFT v1.2.0 and `Critical recipient metadata ready` or `Seeded critical recipient metadata`.
+1. Confirm the console reports ZFT v1.3.0 and `Critical recipient metadata ready` or `Seeded critical recipient metadata`.
 2. Confirm **Create Fumble Reminder Effects** is enabled.
 3. Force a structured natural 1 and confirm the rolling Actor receives one reminder Active Effect whose token icon is visible without manually changing **Always Show Effect Icon**.
 4. Confirm the reminder effect contains no mechanical Active Effect changes and remains until manually removed.

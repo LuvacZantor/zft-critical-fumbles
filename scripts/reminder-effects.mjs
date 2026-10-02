@@ -1,12 +1,14 @@
 import { resolveCriticalEffectPolarity, resolveCriticalEffectTarget } from "./critical-targeting.mjs";
+import { hasSidebarHistoryEntry, removeSidebarHistoryEntry, updateSidebarHistoryRecipient } from "./sidebar.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const FUMBLE_REMINDER_SETTING = "enableFumbleReminderEffects";
 const CRITICAL_REMINDER_SETTING = "enableCriticalReminderEffects";
 const FUMBLE_ICON = `modules/${MODULE_ID}/icons/fumble-reminder.svg`;
 const CRITICAL_ICON = `modules/${MODULE_ID}/icons/critical-reminder.svg`;
 const CRITICAL_HARMFUL_ICON = `modules/${MODULE_ID}/icons/critical-target-reminder.svg`;
+const suppressedHistoryPromptEffectIds = new Set();
 
 console.log(`[ZFT] 🛠️ v${VERSION} | Reminder effects script loaded`);
 
@@ -18,6 +20,7 @@ Hooks.once("ready", () => {
   if (game.system?.id !== "dnd5e") return;
 
   Hooks.on("createChatMessage", onCreateChatMessage);
+  Hooks.on("deleteActiveEffect", onDeleteReminderActiveEffect);
   registerReminderApi();
 
   console.log(`[ZFT] ✅ v${VERSION} | Reminder effects ready | Foundry ${game.version} | D&D5e ${game.system.version}`);
@@ -90,12 +93,17 @@ async function onCreateChatMessage(message) {
 
     const recipient = outcome === "critical"
       ? await resolveCriticalRecipient({ message, page, sourceActor, zftFlags })
-      : { actor: sourceActor, effectTarget: "roller" };
+      : {
+          actor: sourceActor,
+          effectTarget: "roller",
+          tokenDocument: await resolveSourceTokenDocument(message, zftFlags, sourceActor)
+        };
 
     if (!recipient?.actor) return;
 
     const actor = recipient.actor;
     const effectTarget = recipient.effectTarget ?? "roller";
+    const recipientTokenDocument = recipient.tokenDocument ?? findSceneTokenForActor(message, actor);
 
     if (!actor.canUserModify?.(game.user, "update") && !game.user?.isGM) {
       console.warn(`[ZFT] ⚠️ v${VERSION} | Reminder effect skipped | Current user cannot update recipient Actor`, {
@@ -129,6 +137,14 @@ async function onCreateChatMessage(message) {
     const created = await actor.createEmbeddedDocuments("ActiveEffect", [effectData]);
     const effect = created?.[0] ?? null;
 
+    await persistResultRecipientContext({
+      message,
+      actor,
+      tokenDocument: recipientTokenDocument,
+      effectTarget,
+      effectPolarity
+    });
+
     console.log(`[ZFT] ✅ v${VERSION} | ${formatOutcome(outcome)} reminder effect created`, {
       actor: actor.name,
       actorUuid: actor.uuid,
@@ -154,14 +170,22 @@ async function resolveCriticalRecipient({ message, page, sourceActor, zftFlags }
   }
 
   if (effectTarget === "roller") {
-    return { actor: sourceActor, effectTarget };
+    return {
+      actor: sourceActor,
+      effectTarget,
+      tokenDocument: await resolveSourceTokenDocument(message, zftFlags, sourceActor)
+    };
   }
 
   if (effectTarget === "target") {
     const capturedTargets = await resolveCapturedTargets(zftFlags);
 
     if (capturedTargets.length === 1) {
-      return { actor: capturedTargets[0].actor, effectTarget };
+      return {
+        actor: capturedTargets[0].actor,
+        effectTarget,
+        tokenDocument: capturedTargets[0].tokenDocument ?? null
+      };
     }
 
     const candidates = capturedTargets.length
@@ -178,7 +202,9 @@ async function resolveCriticalRecipient({ message, page, sourceActor, zftFlags }
         : "ZFT could not identify one captured attack target. Choose the creature that receives the critical reminder effect."
     });
 
-    return chosen ? { actor: chosen.actor, effectTarget } : null;
+    return chosen
+      ? { actor: chosen.actor, effectTarget, tokenDocument: chosen.tokenDocument ?? null }
+      : null;
   }
 
   if (effectTarget === "ally") {
@@ -191,7 +217,9 @@ async function resolveCriticalRecipient({ message, page, sourceActor, zftFlags }
       prompt: "Choose the ally who receives this critical reminder effect."
     });
 
-    return chosen ? { actor: chosen.actor, effectTarget } : null;
+    return chosen
+      ? { actor: chosen.actor, effectTarget, tokenDocument: chosen.tokenDocument ?? null }
+      : null;
   }
 
   console.warn(`[ZFT] ⚠️ v${VERSION} | Critical reminder skipped | Unsupported recipient metadata`, {
@@ -368,6 +396,91 @@ async function chooseRecipient({ message, page, candidates, title, prompt }) {
   return candidates[index];
 }
 
+async function resolveSourceTokenDocument(message, zftFlags, sourceActor) {
+  const sourceTokenUuid = String(zftFlags?.sourceTokenUuid ?? "").trim();
+  if (sourceTokenUuid) {
+    try {
+      const tokenDocument = await fromUuid(sourceTokenUuid);
+      if (tokenDocument?.documentName === "Token") return tokenDocument;
+    } catch {
+      // Fall through to speaker/current-scene matching.
+    }
+  }
+
+  const speaker = message?.speaker ?? {};
+  if (speaker.scene && speaker.token) {
+    const scene = game.scenes?.get(speaker.scene);
+    const tokenDocument = scene?.tokens?.get(speaker.token) ?? null;
+    if (tokenDocument) return tokenDocument;
+  }
+
+  return findSceneTokenForActor(message, sourceActor);
+}
+
+function findSceneTokenForActor(message, actor) {
+  if (!actor) return null;
+
+  const sceneId = message?.speaker?.scene ?? canvas?.scene?.id ?? null;
+  const scene = sceneId ? game.scenes?.get(sceneId) : canvas?.scene ?? null;
+  if (!scene) return null;
+
+  return Array.from(scene.tokens ?? []).find(tokenDocument => {
+    const tokenActor = tokenDocument?.actor ?? null;
+    if (!tokenActor) return false;
+    if (tokenActor.uuid && actor.uuid && tokenActor.uuid === actor.uuid) return true;
+    return Boolean(tokenActor.id && actor.id && tokenActor.id === actor.id);
+  }) ?? null;
+}
+
+async function persistResultRecipientContext({ message, actor, tokenDocument, effectTarget, effectPolarity }) {
+  const historyEntryId = message?.flags?.[MODULE_ID]?.historyEntryId ?? message?.id ?? null;
+
+  if (message?.update) {
+    const update = {
+      [`flags.${MODULE_ID}.recipientActorUuid`]: actor?.uuid ?? null,
+      [`flags.${MODULE_ID}.effectTarget`]: effectTarget ?? null,
+      [`flags.${MODULE_ID}.effectPolarity`]: effectPolarity ?? null
+    };
+
+    if (tokenDocument?.uuid) {
+      update[`flags.${MODULE_ID}.recipientTokenUuid`] = tokenDocument.uuid;
+    }
+
+    try {
+      await message.update(update);
+    } catch (error) {
+      console.warn(`[ZFT] ⚠️ v${VERSION} | Reminder created but result-card recipient context could not be saved`, {
+        messageId: message?.id ?? null,
+        actor: actor?.name ?? null,
+        tokenUuid: tokenDocument?.uuid ?? null,
+        effectTarget,
+        effectPolarity,
+        error
+      });
+    }
+  }
+
+  try {
+    await updateSidebarHistoryRecipient({
+      message,
+      historyEntryId,
+      actor,
+      tokenDocument,
+      effectTarget,
+      effectPolarity
+    });
+  } catch (error) {
+    console.warn(`[ZFT] ⚠️ v${VERSION} | Reminder created but sidebar recipient context could not be saved`, {
+      historyEntryId,
+      actor: actor?.name ?? null,
+      tokenUuid: tokenDocument?.uuid ?? null,
+      effectTarget,
+      effectPolarity,
+      error
+    });
+  }
+}
+
 function buildReminderEffectData({ actor, sourceActor, message, page, outcome, effectTarget, effectPolarity, rollType, seedKey }) {
   const rawJournalContent = String(page?.text?.content ?? "").trim();
   const effectSummary = extractEffectSummary(rawJournalContent);
@@ -398,6 +511,7 @@ function buildReminderEffectData({ actor, sourceActor, message, page, outcome, e
         seedKey,
         journalPageUuid: page?.uuid ?? null,
         chatMessageId: message?.id ?? null,
+        historyEntryId: message?.flags?.[MODULE_ID]?.historyEntryId ?? message?.id ?? null,
         sourceActorUuid: sourceActor?.uuid ?? null,
         recipientActorUuid: actor?.uuid ?? null,
         createdByUserId: game.user?.id ?? null
@@ -502,6 +616,64 @@ function isReminderAuthority(message) {
   return Boolean(authorId && authorId === game.user?.id);
 }
 
+async function onDeleteReminderActiveEffect(effect, options = {}, userId = null) {
+  try {
+    const flags = effect?.flags?.[MODULE_ID];
+    if (flags?.reminderEffect !== true) return;
+
+    const effectId = effect?.id ?? null;
+    const suppressed = Boolean(options?.zftSkipSidebarHistoryPrompt)
+      || Boolean(effectId && suppressedHistoryPromptEffectIds.has(effectId));
+    if (effectId) suppressedHistoryPromptEffectIds.delete(effectId);
+    if (suppressed) return;
+    if (!isEffectDeletionPromptAuthority(userId)) return;
+
+    const historyEntryId = String(flags.historyEntryId ?? flags.chatMessageId ?? "").trim();
+    if (!historyEntryId || !hasSidebarHistoryEntry(historyEntryId)) return;
+
+    const DialogV2 = globalThis.foundry?.applications?.api?.DialogV2;
+    if (!DialogV2?.confirm) return;
+
+    const removeEntry = await DialogV2.confirm({
+      window: { title: "Remove Sidebar History Entry?" },
+      content: `<p>The reminder effect <strong>${escapeHTML(effect?.name ?? "ZFT reminder")}</strong> was removed.</p><p>Also remove its matching entry from the Criticals &amp; Fumbles sidebar?</p>`,
+      yes: {
+        label: "Remove Entry",
+        icon: "fa-solid fa-trash"
+      },
+      no: {
+        label: "Keep History"
+      },
+      rejectClose: false,
+      modal: true
+    });
+
+    if (removeEntry) {
+      await removeSidebarHistoryEntry(historyEntryId);
+    }
+  } catch (error) {
+    console.error(`[ZFT] ❌ v${VERSION} | Failed while handling reminder-effect history cleanup`, error);
+  }
+}
+
+function isEffectDeletionPromptAuthority(userId) {
+  const initiatingUser = userId ? game.users?.get(userId) ?? null : null;
+  if (initiatingUser?.active && initiatingUser?.isGM) {
+    return initiatingUser.id === game.user?.id;
+  }
+
+  return isPrimaryActiveGm();
+}
+
+function isPrimaryActiveGm() {
+  const activeGMs = Array.from(game.users ?? [])
+    .filter(user => user?.active && user?.isGM)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+
+  if (!activeGMs.length) return Boolean(game.user?.isGM);
+  return activeGMs[0]?.id === game.user?.id;
+}
+
 function registerReminderApi() {
   if (!game.zftCriticalFumbles) return;
 
@@ -523,7 +695,12 @@ function registerReminderApi() {
 
     if (!ids.length) return 0;
 
-    await actor.deleteEmbeddedDocuments("ActiveEffect", ids);
+    ids.forEach(id => suppressedHistoryPromptEffectIds.add(id));
+    try {
+      await actor.deleteEmbeddedDocuments("ActiveEffect", ids, { zftSkipSidebarHistoryPrompt: true });
+    } finally {
+      ids.forEach(id => suppressedHistoryPromptEffectIds.delete(id));
+    }
     console.log(`[ZFT] 🧹 v${VERSION} | Cleared ${ids.length} reminder effect${ids.length === 1 ? "" : "s"} | ${actor.name}`);
     return ids.length;
   };
