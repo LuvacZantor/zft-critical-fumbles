@@ -2,7 +2,7 @@ import { resolveCriticalEffectPolarity, resolveCriticalEffectTarget } from "./cr
 import { hasSidebarHistoryEntry, removeSidebarHistoryEntry, updateSidebarHistoryRecipient } from "./sidebar.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const FUMBLE_REMINDER_SETTING = "enableFumbleReminderEffects";
 const CRITICAL_REMINDER_SETTING = "enableCriticalReminderEffects";
 const FUMBLE_ICON = `modules/${MODULE_ID}/icons/fumble-reminder.svg`;

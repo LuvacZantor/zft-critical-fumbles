@@ -18,17 +18,31 @@
     </div>
 
     {{#if isGM}}
-      <button
-        type="button"
-        class="zft-cf-sidebar-clear-all"
-        data-action="clearHistory"
-        title="Clear all Critical/Fumble sidebar history"
-        aria-label="Clear all Critical/Fumble sidebar history"
-        {{#unless hasEntries}}disabled{{/unless}}
-      >
-        <i class="fa-solid fa-trash"></i>
-        <span>Clear</span>
-      </button>
+      <div class="zft-cf-sidebar-header-actions">
+        <button
+          type="button"
+          class="zft-cf-sidebar-reset-stats"
+          data-action="resetPlayerStats"
+          title="Reset all Players-list Critical/Fumble counters"
+          aria-label="Reset all Players-list Critical/Fumble counters"
+          {{#unless hasTrackedPlayerStats}}disabled{{/unless}}
+        >
+          <i class="fa-solid fa-rotate-left"></i>
+          <span>Reset Stats</span>
+        </button>
+
+        <button
+          type="button"
+          class="zft-cf-sidebar-clear-all"
+          data-action="clearHistory"
+          title="Clear all Critical/Fumble sidebar history"
+          aria-label="Clear all Critical/Fumble sidebar history"
+          {{#unless hasEntries}}disabled{{/unless}}
+        >
+          <i class="fa-solid fa-trash"></i>
+          <span>Clear</span>
+        </button>
+      </div>
     {{/if}}
   </header>
 

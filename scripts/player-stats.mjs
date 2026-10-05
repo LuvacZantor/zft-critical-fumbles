@@ -105,6 +105,42 @@ export async function resetUserOutcomeStats(userOrId = game.user?.id) {
   return { criticals: 0, fumbles: 0 };
 }
 
+/**
+ * Reset persistent outcome counters for every Foundry user shown in the Players list,
+ * including GM accounts. This does not touch sidebar history, chat messages,
+ * or Active Effects.
+ */
+export async function resetAllPlayerOutcomeStats() {
+  if (!game.user?.isGM) throw new Error("Only a GM can reset all ZFT critical/fumble counters");
+
+  const players = Array.from(game.users ?? []);
+  const resetUsers = [];
+
+  for (const user of players) {
+    const current = getUserOutcomeStats(user);
+    if (current.criticals === 0 && current.fumbles === 0) continue;
+
+    await user.setFlag(MODULE_ID, STATS_FLAG, { criticals: 0, fumbles: 0 });
+    resetUsers.push({
+      id: user.id,
+      name: user.name,
+      previous: current
+    });
+  }
+
+  refreshPlayerList();
+
+  console.log(
+    `[ZFT] 🧹 v${VERSION} | Reset player Critical/Fumble counters | ${resetUsers.length} user${resetUsers.length === 1 ? "" : "s"}`,
+    resetUsers
+  );
+
+  return {
+    resetCount: resetUsers.length,
+    users: resetUsers
+  };
+}
+
 export async function setUserOutcomeStats(userOrId, stats = {}) {
   const user = resolveUser(userOrId);
   if (!user) throw new Error("Unable to resolve the requested Foundry user");

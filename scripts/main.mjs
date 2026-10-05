@@ -8,12 +8,13 @@ import {
   incrementCurrentUserOutcome,
   registerPlayerStatsHooks,
   registerPlayerStatsSetting,
+  resetAllPlayerOutcomeStats,
   resetUserOutcomeStats,
   setUserOutcomeStats
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -596,6 +597,10 @@ function registerPublicApi() {
 
     async resetUserStats(userOrId = game.user?.id) {
       return resetUserOutcomeStats(userOrId);
+    },
+
+    async resetAllPlayerStats() {
+      return resetAllPlayerOutcomeStats();
     },
 
     async setUserStats(userOrId, stats) {

@@ -1,7 +1,8 @@
 import { resolveCriticalEffectPolarity, resolveCriticalEffectTarget } from "./critical-targeting.mjs";
+import { getUserOutcomeStats, resetAllPlayerOutcomeStats } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const SIDEBAR_HISTORY_SETTING = "sidebarHistory";
 export const SIDEBAR_TAB_NAME = "zftCriticalFumbles";
 
@@ -22,6 +23,7 @@ export class CriticalFumblesSidebarTab extends HandlebarsApplicationMixin(Abstra
     actions: {
       pingToken: CriticalFumblesSidebarTab.#onPingToken,
       removeEntry: CriticalFumblesSidebarTab.#onRemoveEntry,
+      resetPlayerStats: CriticalFumblesSidebarTab.#onResetPlayerStats,
       clearHistory: CriticalFumblesSidebarTab.#onClearHistory
     }
   };
@@ -49,6 +51,12 @@ export class CriticalFumblesSidebarTab extends HandlebarsApplicationMixin(Abstra
 
     const criticalCount = entries.filter(entry => entry.isCritical).length;
     const fumbleCount = entries.length - criticalCount;
+    const trackedPlayerCount = Array.from(game.users ?? [])
+      .filter(user => {
+        const stats = getUserOutcomeStats(user);
+        return stats.criticals > 0 || stats.fumbles > 0;
+      })
+      .length;
 
     return Object.assign(context, {
       isGM: Boolean(game.user?.isGM),
@@ -57,6 +65,8 @@ export class CriticalFumblesSidebarTab extends HandlebarsApplicationMixin(Abstra
       criticalCount,
       fumbleCount,
       hasEntries: entries.length > 0,
+      hasTrackedPlayerStats: trackedPlayerCount > 0,
+      trackedPlayerCount,
       summary: entries.length === 1
         ? "1 recorded result"
         : `${entries.length} recorded results`
@@ -99,6 +109,56 @@ export class CriticalFumblesSidebarTab extends HandlebarsApplicationMixin(Abstra
     target.disabled = true;
     try {
       await removeSidebarHistoryEntry(entryId);
+    } finally {
+      if (target.isConnected) target.disabled = false;
+    }
+  }
+
+  static async #onResetPlayerStats(event, target) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!game.user?.isGM) return;
+
+    const trackedPlayers = Array.from(game.users ?? [])
+      .filter(user => {
+        const stats = getUserOutcomeStats(user);
+        return stats.criticals > 0 || stats.fumbles > 0;
+      });
+
+    if (!trackedPlayers.length) {
+      ui.notifications?.info?.("ZFT Critical Fumbles: No player counters need resetting.");
+      return;
+    }
+
+    const DialogV2 = globalThis.foundry?.applications?.api?.DialogV2;
+    if (!DialogV2?.confirm) return;
+
+    const count = trackedPlayers.length;
+    const confirmed = await DialogV2.confirm({
+      window: { title: "Reset Player Critical/Fumble Stats?" },
+      content: `<p>Reset the tracked Critical and Fumble totals to <strong>0</strong> for ${count} Players-list account${count === 1 ? "" : "s"}?</p><p>This includes GM accounts and does not clear sidebar history, chat messages, or Active Effects.</p>`,
+      yes: {
+        label: "Reset Stats",
+        icon: "fa-solid fa-rotate-left"
+      },
+      no: {
+        label: "Cancel"
+      },
+      rejectClose: false,
+      modal: true
+    });
+
+    if (!confirmed) return;
+
+    target.disabled = true;
+    try {
+      const result = await resetAllPlayerOutcomeStats();
+      ui.notifications?.info?.(
+        `ZFT Critical Fumbles: Reset counters for ${result.resetCount} player${result.resetCount === 1 ? "" : "s"}.`
+      );
+    } catch (error) {
+      console.error(`[ZFT] ❌ v${VERSION} | Failed to reset player Critical/Fumble counters`, error);
+      ui.notifications?.error?.(`ZFT Critical Fumbles: ${error.message ?? error}`);
     } finally {
       if (target.isConnected) target.disabled = false;
     }
