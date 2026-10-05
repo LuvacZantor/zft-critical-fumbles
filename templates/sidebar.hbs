@@ -1,0 +1,99 @@
+<section class="zft-cf-sidebar-body">
+  <header class="zft-cf-sidebar-header">
+    <div class="zft-cf-sidebar-heading-group">
+      <div class="zft-cf-sidebar-title">
+        <i class="fa-solid fa-dice-d20"></i>
+        <span>Criticals &amp; Fumbles</span>
+      </div>
+      <div class="zft-cf-sidebar-header-counts" aria-label="Critical and fumble counts">
+        <span class="zft-cf-sidebar-count-chip critical" title="Criticals">
+          <i class="fa-solid fa-burst"></i>
+          {{criticalCount}}
+        </span>
+        <span class="zft-cf-sidebar-count-chip fumble" title="Fumbles">
+          <i class="fa-solid fa-skull"></i>
+          {{fumbleCount}}
+        </span>
+      </div>
+    </div>
+
+    {{#if isGM}}
+      <button
+        type="button"
+        class="zft-cf-sidebar-clear-all"
+        data-action="clearHistory"
+        title="Clear all Critical/Fumble sidebar history"
+        aria-label="Clear all Critical/Fumble sidebar history"
+        {{#unless hasEntries}}disabled{{/unless}}
+      >
+        <i class="fa-solid fa-trash"></i>
+        <span>Clear</span>
+      </button>
+    {{/if}}
+  </header>
+
+  <div class="zft-cf-sidebar-summary">{{summary}}. History remains until a GM removes it.</div>
+
+  {{#if hasEntries}}
+    <ol class="zft-cf-sidebar-list">
+      {{#each entries}}
+        <li class="zft-cf-sidebar-item {{outcome}}">
+          <details class="zft-cf-sidebar-entry" data-entry-id="{{id}}" {{#if expanded}}open{{/if}}>
+            <summary class="zft-cf-sidebar-entry-summary">
+              <span class="zft-cf-sidebar-marker {{outcome}}" title="{{outcomeLabel}}">
+                {{#if isCritical}}
+                  <i class="fa-solid fa-burst"></i>
+                {{else}}
+                  <i class="fa-solid fa-skull"></i>
+                {{/if}}
+              </span>
+
+              <span class="zft-cf-sidebar-entry-text">
+                <span class="zft-cf-sidebar-entry-title">{{title}}</span>
+                <span class="zft-cf-sidebar-entry-meta">{{summary}}</span>
+              </span>
+
+              {{#if hasActions}}
+                <span class="zft-cf-sidebar-entry-actions">
+                  {{#if canPing}}
+                    <button
+                      type="button"
+                      class="zft-cf-sidebar-action zft-cf-sidebar-ping"
+                      data-action="pingToken"
+                      data-token-uuid="{{tokenUuid}}"
+                      title="Pan to and ping token"
+                      aria-label="Pan to and ping token"
+                    >
+                      <i class="fa-solid fa-location-crosshairs"></i>
+                    </button>
+                  {{/if}}
+
+                  {{#if canManage}}
+                    <button
+                      type="button"
+                      class="zft-cf-sidebar-action zft-cf-sidebar-remove"
+                      data-action="removeEntry"
+                      data-entry-id="{{id}}"
+                      title="Remove this entry from sidebar history"
+                      aria-label="Remove this entry from sidebar history"
+                    >
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
+                  {{/if}}
+                </span>
+              {{/if}}
+            </summary>
+
+            <div class="zft-cf-sidebar-card-body">
+              {{{content}}}
+            </div>
+          </details>
+        </li>
+      {{/each}}
+    </ol>
+  {{else}}
+    <div class="zft-cf-sidebar-empty">
+      Critical and fumble results will remain here until a GM clears them.
+    </div>
+  {{/if}}
+</section>

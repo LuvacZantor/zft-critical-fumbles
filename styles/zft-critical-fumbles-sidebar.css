@@ -1,0 +1,293 @@
+:root {
+  --zft-cf-sidebar-gold: #ffba00;
+  --zft-cf-sidebar-gold-soft: #ffd86b;
+  --zft-cf-sidebar-red: #b83232;
+  --zft-cf-sidebar-red-soft: #e26969;
+  --zft-cf-sidebar-border: rgba(255, 255, 255, 0.10);
+}
+
+[data-tab="zftCriticalFumbles"] {
+  position: relative;
+}
+
+[data-tab="zftCriticalFumbles"] .zft-cf-sidebar-tab-icon,
+[data-tab="zftCriticalFumbles"] > i.fa-dice-d20 {
+  color: var(--zft-cf-sidebar-gold) !important;
+  -webkit-text-fill-color: var(--zft-cf-sidebar-gold) !important;
+  text-shadow: 0 0 6px rgba(255, 186, 0, 0.45);
+}
+
+.zft-cf-sidebar-app {
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.zft-cf-sidebar-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.zft-cf-sidebar-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid rgba(255, 186, 0, 0.35);
+  border-bottom: 1px solid rgba(184, 50, 50, 0.35);
+  background:
+    linear-gradient(110deg, rgba(255, 186, 0, 0.13) 0%, rgba(255, 186, 0, 0.04) 47%, rgba(184, 50, 50, 0.04) 53%, rgba(184, 50, 50, 0.13) 100%),
+    rgba(0, 0, 0, 0.18);
+}
+
+.zft-cf-sidebar-heading-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.zft-cf-sidebar-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: 0.015em;
+}
+
+.zft-cf-sidebar-title > i {
+  color: var(--zft-cf-sidebar-gold);
+  text-shadow: 0 0 5px rgba(255, 186, 0, 0.40);
+}
+
+.zft-cf-sidebar-header-counts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zft-cf-sidebar-count-chip {
+  min-width: 34px;
+  height: 20px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.zft-cf-sidebar-count-chip.critical {
+  color: var(--zft-cf-sidebar-gold-soft);
+  border: 1px solid rgba(255, 186, 0, 0.38);
+  background: rgba(255, 186, 0, 0.10);
+}
+
+.zft-cf-sidebar-count-chip.fumble {
+  color: var(--zft-cf-sidebar-red-soft);
+  border: 1px solid rgba(184, 50, 50, 0.42);
+  background: rgba(184, 50, 50, 0.12);
+}
+
+.zft-cf-sidebar-clear-all {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-color: rgba(184, 50, 50, 0.45);
+  color: var(--zft-cf-sidebar-red-soft);
+  background: rgba(184, 50, 50, 0.08);
+}
+
+.zft-cf-sidebar-clear-all:disabled {
+  opacity: 0.4;
+}
+
+.zft-cf-sidebar-summary {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--zft-cf-sidebar-border);
+  background: rgba(0, 0, 0, 0.10);
+  font-size: 0.72rem;
+  opacity: 0.76;
+}
+
+.zft-cf-sidebar-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.zft-cf-sidebar-item {
+  border-bottom: 1px solid var(--zft-cf-sidebar-border);
+  border-left: 3px solid transparent;
+}
+
+.zft-cf-sidebar-item.critical {
+  border-left-color: rgba(255, 186, 0, 0.82);
+  background: linear-gradient(90deg, rgba(255, 186, 0, 0.09), rgba(255, 186, 0, 0.015) 72%);
+}
+
+.zft-cf-sidebar-item.fumble {
+  border-left-color: rgba(184, 50, 50, 0.90);
+  background: linear-gradient(90deg, rgba(184, 50, 50, 0.11), rgba(184, 50, 50, 0.018) 72%);
+}
+
+.zft-cf-sidebar-entry {
+  margin: 0;
+}
+
+.zft-cf-sidebar-entry-summary {
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px 7px 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.zft-cf-sidebar-entry-summary::-webkit-details-marker {
+  display: none;
+}
+
+.zft-cf-sidebar-entry-summary::marker {
+  content: "";
+}
+
+.zft-cf-sidebar-entry-summary:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.zft-cf-sidebar-marker {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.9rem;
+}
+
+.zft-cf-sidebar-marker.critical {
+  color: var(--zft-cf-sidebar-gold-soft);
+  background: rgba(255, 186, 0, 0.12);
+  border: 1px solid rgba(255, 186, 0, 0.38);
+}
+
+.zft-cf-sidebar-marker.fumble {
+  color: var(--zft-cf-sidebar-red-soft);
+  background: rgba(184, 50, 50, 0.14);
+  border: 1px solid rgba(184, 50, 50, 0.42);
+}
+
+.zft-cf-sidebar-entry-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zft-cf-sidebar-entry-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 750;
+}
+
+.zft-cf-sidebar-item.critical .zft-cf-sidebar-entry-title {
+  color: #f0d58a;
+}
+
+.zft-cf-sidebar-item.fumble .zft-cf-sidebar-entry-title {
+  color: #e6a1a1;
+}
+
+.zft-cf-sidebar-entry-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  opacity: 0.76;
+}
+
+.zft-cf-sidebar-entry-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zft-cf-sidebar-action {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.zft-cf-sidebar-ping {
+  color: inherit;
+}
+
+.zft-cf-sidebar-remove {
+  color: #d7a0a0;
+  border-color: rgba(184, 50, 50, 0.32);
+}
+
+.zft-cf-sidebar-card-body {
+  padding: 0 8px 9px 40px;
+}
+
+.zft-cf-sidebar-card-body .zft-critical-fumbles-card {
+  margin: 0;
+  padding: 8px 9px;
+  border-width: 1px;
+}
+
+.zft-cf-sidebar-card-body .zft-cf-heading {
+  font-size: 0.9rem;
+}
+
+.zft-cf-sidebar-card-body .zft-cf-result-title {
+  margin-top: 5px;
+  font-size: 1rem;
+}
+
+.zft-cf-sidebar-card-body .zft-cf-result-content {
+  margin-top: 7px;
+  font-size: 0.85rem;
+}
+
+.zft-cf-sidebar-card-body .zft-cf-result-context {
+  margin-top: 7px;
+  padding-top: 6px;
+  font-size: 0.72rem;
+}
+
+.zft-cf-sidebar-empty {
+  padding: 24px 12px;
+  text-align: center;
+  opacity: 0.66;
+}

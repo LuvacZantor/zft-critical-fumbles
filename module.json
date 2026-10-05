@@ -1,8 +1,8 @@
 {
-  "id": "zft-feature-automation",
-  "title": "ZFT Feature Automation",
-  "description": "Zantor's Foundry Tools feature automation for D&D5e.",
-  "version": "1.3.9",
+  "id": "zft-critical-fumbles",
+  "title": "ZFT Critical Fumbles",
+  "description": "Detects and classifies single-result d20 rolls for configurable critical and fumble handling, seeds module-owned RollTable/Journal content, renders Journal-driven outcome chat cards, supports reminder Active Effects and sounds, tracks per-user totals, and provides a persistent GM-managed Criticals & Fumbles sidebar with collapsible history, individual/all clearing, and token pinging.",
+  "version": "1.3.0",
   "authors": [
     {
       "name": "Luvac Zantor"
@@ -10,31 +10,56 @@
   ],
   "compatibility": {
     "minimum": "13",
-    "verified": "13"
+    "verified": "14"
   },
   "relationships": {
     "systems": [
       {
         "id": "dnd5e",
         "type": "system",
-        "compatibility": {
-          "minimum": "5.0.0"
-        }
-      }
-    ],
-    "requires": [
-      {
-        "id": "midi-qol",
-        "type": "module"
-      },
-      {
-        "id": "rest-recovery",
-        "type": "module"
+        "compatibility": {}
       }
     ]
   },
-  "socket": true,
   "esmodules": [
-    "scripts/main.js"
+    "scripts/main.mjs",
+    "scripts/reminder-effects.mjs"
+  ],
+  "styles": [
+    "styles/zft-critical-fumbles.css",
+    "styles/zft-critical-fumbles-sidebar.css"
+  ],
+  "packs": [
+    {
+      "name": "critical-fumble-tables",
+      "label": "Critical & Fumble Tables",
+      "type": "RollTable",
+      "path": "packs/critical-fumble-tables"
+    },
+    {
+      "name": "critical-fumble-results",
+      "label": "Critical & Fumble Results",
+      "type": "JournalEntry",
+      "path": "packs/critical-fumble-results"
+    },
+    {
+      "name": "critical-fumble-sounds",
+      "label": "Critical & Fumble Sounds",
+      "type": "Playlist",
+      "path": "packs/critical-fumble-sounds"
+    }
+  ],
+  "packFolders": [
+    {
+      "name": "ZFT Critical Fumbles",
+      "sorting": "m",
+      "color": "#ffba00",
+      "packs": [
+        "critical-fumble-tables",
+        "critical-fumble-results",
+        "critical-fumble-sounds"
+      ],
+      "folders": []
+    }
   ]
 }
