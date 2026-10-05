@@ -1,0 +1,67 @@
+<section class="standard-form">
+  <p class="hint">
+    These settings affect only a new Battle Familiar summoned when no active Find Familiar is being empowered.
+    Existing familiars keep their own portrait and token artwork.
+  </p>
+
+  <fieldset>
+    <legend>Appearance Behavior</legend>
+
+    <label class="checkbox">
+      <input type="checkbox" name="appearanceEnabled" {{checked appearanceEnabled}}>
+      Enable compendium appearance artwork
+    </label>
+    <p class="hint">When disabled, the generic CPR summon artwork is used.</p>
+
+    <label class="checkbox">
+      <input type="checkbox" name="beastsOnly" {{checked beastsOnly}}>
+      Restrict appearance choices to Beast NPCs
+    </label>
+    <p class="hint">Disable this to allow any NPC creature from the selected compendiums as a cosmetic appearance.</p>
+
+    <label class="checkbox">
+      <input type="checkbox" name="excludeLegacy" {{checked excludeLegacy}}>
+      Exclude creatures with “Legacy” in the name
+    </label>
+    <p class="hint">When enabled, any appearance whose creature name contains “Legacy” is removed from the available choices.</p>
+
+    <label class="checkbox">
+      <input type="checkbox" name="randomAppearance" {{checked randomAppearance}}>
+      Randomize the appearance
+    </label>
+    <p class="hint">When disabled, the caster can type and select a creature name when the spell is cast.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Appearance Sources</legend>
+    <p class="hint">
+      Only checked Actor compendiums are searched for Battle Familiar appearances. They are not searched at Foundry startup; selected packs are loaded only when a new Battle Familiar actually needs an appearance, then cached for the rest of the session. Opening this settings window reads each Actor pack's basic index only to display its Actor total.
+    </p>
+
+    <div style="max-height: 420px; overflow-y: auto; padding-right: 0.5rem;">
+      {{#each packs}}
+        <div style="padding: 0.45rem 0; border-bottom: 1px solid var(--color-border-light-tertiary);">
+          <label class="checkbox" style="margin: 0;">
+            <input type="checkbox" name="packs" value="{{collection}}" {{checked selected}}>
+            <span style="display: flex; width: 100%; gap: 0.75rem; align-items: baseline; justify-content: space-between;">
+              <span><strong>{{title}}</strong> — {{packageTitle}}</span>
+              <span style="white-space: nowrap; opacity: 0.75; font-weight: 600;">
+                {{#if actorCount}}{{actorCount}} Actors{{else}}Actor count unavailable{{/if}}
+              </span>
+            </span>
+          </label>
+          <div style="margin: 0.2rem 0 0 1.9rem; font-size: 0.82em; opacity: 0.72; line-height: 1.25;">
+            <span>Compendium:</span> <code>{{collection}}</code>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </fieldset>
+
+  <footer class="form-footer">
+    <button type="submit">
+      <i class="fa-solid fa-floppy-disk"></i>
+      Save
+    </button>
+  </footer>
+</section>
