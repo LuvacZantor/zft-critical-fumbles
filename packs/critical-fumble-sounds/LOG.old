@@ -1,7 +1,0 @@
-2026/10/02-12:35:26.338185 7fde91bfe6c0 Recovering log #223
-2026/10/02-12:35:26.353863 7fde91bfe6c0 Delete type=3 #222
-2026/10/02-12:35:26.353986 7fde91bfe6c0 Delete type=0 #223
-2026/10/02-12:55:11.117164 7fdbf2dff6c0 Level-0 table #227: started
-2026/10/02-12:55:11.117219 7fdbf2dff6c0 Level-0 table #227: 0 bytes OK
-2026/10/02-12:55:11.121642 7fdbf2dff6c0 Delete type=0 #225
-2026/10/02-12:55:11.125995 7fdbf2dff6c0 Manual compaction at level-0 from '!playlists!ZFTCritSounds001' @ 72057594037927935 : 1 .. '!playlists.sounds!ZFTFumbleSounds1.ytoiMatevZbOOi8E' @ 0 : 0; will stop at (end)
