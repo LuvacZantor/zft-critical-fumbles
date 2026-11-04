@@ -1,4 +1,5 @@
 import { resolveSingleActiveD20 } from "./d20-detector.mjs";
+import { classifyDnd5eChatRoll, matchingRecentStructuredRoll } from "./roll-correlation.mjs";
 import { ensureCriticalContent, ensureFumbleContent, rollCriticalResult, rollFumbleResult } from "./content-manager.mjs";
 import { ensureCriticalTargetMetadata } from "./critical-targeting.mjs";
 import { initializeCriticalFumbleSidebar, registerCriticalFumbleSidebarSettings, registerCriticalFumbleSidebarTab } from "./sidebar.mjs";
@@ -14,7 +15,7 @@ import {
 } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.3.1";
+const VERSION = "1.3.2-dev.1";
 const DEBUG_SETTING = "debugMode";
 const CRITICAL_SETTING = "enableCriticals";
 const CRITICAL_SOUND_ENABLED_SETTING = "enableCriticalSound";
@@ -55,7 +56,10 @@ const FUMBLE_DEFAULT_SOUNDS = Object.freeze(
     }
   }))
 );
-const RECENT_STRUCTURED_WINDOW_MS = 5000;
+// The untyped ChatMessage path is a last-resort fallback. Give structured
+// D&D5e hooks one short event-correlation grace period before evaluating it.
+const GENERIC_FALLBACK_GRACE_MS = 200;
+const RECENT_STRUCTURED_WINDOW_MS = 1500;
 
 const FUMBLE_SETTINGS = Object.freeze({
   attack: { key: "fumbleAttack", label: "Fumble on Attack Rolls", default: true },
@@ -183,17 +187,37 @@ async function onCreateChatMessage(message) {
     const authorId = message?.author?.id ?? message?.user?.id ?? message?.user;
     if (authorId && authorId !== game.user?.id) return;
 
-    // D&D5e death saves create a normal roll ChatMessage before firing the
-    // dedicated dnd5e.rollDeathSave hook. Do not let the generic fallback
-    // process that same roll first; the structured death-save hook owns it.
-    if (message?.flags?.dnd5e?.roll?.type === "death") return;
-
     const rolls = getMessageRolls(message);
     if (!rolls.length) return;
 
     const context = resolveChatMessageContext(message);
 
     for (const roll of rolls) {
+      // The D&D5e 5.2.x roll pipeline copies rolls for chat and preserves
+      // flags.dnd5e.roll.type and options.rollType on the copied roll.
+      // These are authoritative provenance, unlike formula/total matching.
+      // Structured D&D5e hooks own these rolls; they must never fall through
+      // to the Generic natural-1 card (regardless of hook arrival order).
+      const structuredType = classifyDnd5eChatRoll(message, roll);
+      if (structuredType) {
+        debugRoll({
+          roll,
+          rollType: "generic",
+          source: "createChatMessage",
+          actor: context.actor,
+          item: null,
+          activity: null,
+          message,
+          status: "IGNORED",
+          reason: `D&D5e classified roll (${structuredType}) is owned by a structured roll hook`
+        });
+        continue;
+      }
+
+      // Untyped chat rolls can arrive just before a structured hook. Defer
+      // the fallback briefly, then recheck the shared processed-roll record.
+      // This is a bounded event-order grace period, not a delay in gameplay.
+      await new Promise(resolve => setTimeout(resolve, GENERIC_FALLBACK_GRACE_MS));
       await processRoll({
         roll,
         rollType: "generic",
@@ -1063,9 +1087,10 @@ function rememberStructuredRoll({ roll, natural, actor, speaker, rollType }) {
     timestamp: Date.now(),
     natural: Number(natural),
     total: normalizeRollTotal(roll?.total),
-    actorKeys: getRollActorKeys(actor, speaker),
-    actorName: getRollActorName(actor, speaker),
+    actorKeys: getRollActorKeys(actor, speaker ?? roll?.parent?.speaker),
+    actorName: getRollActorName(actor, speaker ?? roll?.parent?.speaker),
     formula: String(roll?.formula ?? ""),
+    messageId: roll?.parent?.id ?? null,
     rollType
   });
 }
@@ -1074,39 +1099,21 @@ function consumeRecentStructuredRoll({ roll, natural, actor, speaker }) {
   pruneRecentStructuredRolls();
 
   const candidate = {
+    timestamp: Date.now(),
     natural: Number(natural),
     total: normalizeRollTotal(roll?.total),
-    actorKeys: getRollActorKeys(actor, speaker),
-    actorName: getRollActorName(actor, speaker),
-    formula: String(roll?.formula ?? "")
+    actorKeys: getRollActorKeys(actor, speaker ?? roll?.parent?.speaker),
+    actorName: getRollActorName(actor, speaker ?? roll?.parent?.speaker),
+    formula: String(roll?.formula ?? ""),
+    messageId: roll?.parent?.id ?? null
   };
 
-  const matchIndex = recentStructuredRolls.findIndex(previous => {
-    if (previous.natural !== candidate.natural) return false;
-    if (previous.total !== candidate.total) return false;
-
-    const sharedActorKey = previous.actorKeys.some(key => candidate.actorKeys.includes(key));
-    const sharedActorName = Boolean(
-      previous.actorName
-      && candidate.actorName
-      && previous.actorName === candidate.actorName
-    );
-
-    if (sharedActorKey || sharedActorName) return true;
-
-    // Actorless structured rolls are uncommon, but keep a conservative
-    // formula fallback so they can still deduplicate without suppressing
-    // unrelated generic rolls.
-    const noActorIdentity = !previous.actorKeys.length
-      && !candidate.actorKeys.length
-      && !previous.actorName
-      && !candidate.actorName;
-
-    return noActorIdentity
-      && Boolean(previous.formula)
-      && previous.formula === candidate.formula;
-  });
-
+  // A recent structured roll is consumable only once. Unlike the old
+  // five-second actor+total check, this requires a matching roll signature
+  // and a narrow timing window, with explicit actor conflicts rejected.
+  const matchIndex = recentStructuredRolls.findIndex(previous =>
+    matchingRecentStructuredRoll(previous, candidate)
+  );
   if (matchIndex < 0) return null;
 
   const [matched] = recentStructuredRolls.splice(matchIndex, 1);

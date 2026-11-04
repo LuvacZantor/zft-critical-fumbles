@@ -1,3 +1,16 @@
+# ZFT Critical Fumbles v1.3.2-dev.1
+
+## Duplicate-roll suppression (test build)
+
+- Fix duplicate Skill/Save/Attack/other structured d20 fumble cards: D&D5e-classified ChatMessages are no longer processed by the Generic fallback.
+- D&D5e 5.2.x copies its evaluated rolls when creating ChatMessages; roll-object identity alone is not reliable. The fallback inspects `flags.dnd5e.roll.type` and `roll.options.rollType` before processing.
+- Add a bounded 200 ms event-order grace period for truly untyped generic messages, and a narrow, one-use structured/generic correlation fallback for unclassified copies.
+- Preserve Generic d20 fumbles for standalone `/r 1d20` and preserve normal Skill/Save/Attack categorization, seeded compendium content, sounds, reminder effects, player statistics and sidebar history.
+- For in-world acceptance: make one natural-1 Skill check and verify one detailed fumble card, one sound, one increment, one sidebar entry and one optional reminder effect. Then verify `/r 1d20` still produces its Generic detection card when enabled. Test independently on GM and player clients.
+- This is a **development test build**, not a stable GitHub release. Foundry 13.351 / D&D5e 5.2.5 runtime acceptance remains partial.
+
+## Existing module documentation
+
 # ZFT Critical Fumbles
 
 ## Development standards
@@ -5,7 +18,7 @@
 Zantor's Realms maintains its authoritative Foundry module development, validation, compatibility, and release policies in a centrally managed, private ZFT standards repository. New feature development is **Foundry V14-first**; the existing version numbers, supported environments, and release history documented here remain unchanged. This documentation notice does not imply V14 compatibility for a previously V13-only build.
 
 
-Version 1.3.1
+Version 1.3.2-dev.1
 
 Foundry VTT V13/V14 + D&D5e critical/fumble detection framework with configurable fumble eligibility, duplicate-roll suppression, debug reporting, module-owned content compendiums, Journal-driven critical/fumble result cards, persistent player outcome tracking, bundled one-shot outcome sound pools, and optional visual reminder Active Effects.
 

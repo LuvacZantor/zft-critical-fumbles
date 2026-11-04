@@ -2,7 +2,7 @@ import { resolveCriticalEffectPolarity, resolveCriticalEffectTarget } from "./cr
 import { getUserOutcomeStats, resetAllPlayerOutcomeStats } from "./player-stats.mjs";
 
 const MODULE_ID = "zft-critical-fumbles";
-const VERSION = "1.3.1";
+const VERSION = "1.3.2-dev.1";
 const SIDEBAR_HISTORY_SETTING = "sidebarHistory";
 export const SIDEBAR_TAB_NAME = "zftCriticalFumbles";
 
